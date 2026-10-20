@@ -360,7 +360,7 @@ const tailwindPlugin = ViewPlugin.fromClass(class {
 /// CSS v4 (or other matching CSS). Use important utilities to override
 /// syntax highlighting. No Python code is evaluated.
 export function pythonTailwind(): Extension {
-  // Higher-precedence decorations are nested inside syntax highlighting,
-  // so token colors cannot override inherited annotation colors.
-  return Prec.high(tailwindPlugin)
+  // The syntax highlighter itself uses Prec.high. Nest annotations inside
+  // its marks so token styles cannot override annotation colors or fonts.
+  return Prec.highest(tailwindPlugin)
 }
