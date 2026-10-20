@@ -32,13 +32,67 @@ const view = new EditorView({
 })
 ```
 
+## Tailwind variable annotations
+
+Opt in with `python({tailwind: true})`:
+
+```javascript
+const view = new EditorView({
+  parent: document.body,
+  doc: `def foo(x: 'text-blue-500'):
+    result: 'text-emerald-600 font-bold' = x * x
+    return result`,
+  extensions: [basicSetup, python({tailwind: true})]
+})
+```
+
+String annotations on parameters and simple variable names supply the CSS
+classes for both their declarations and references. Annotations can contain
+multiple whitespace-separated classes, variants, arbitrary values, and v4
+important modifiers. Plain, raw, Unicode, triple-quoted, and concatenated
+string literals are supported. F-strings and computed annotations are ignored.
+
+Styles follow static Python lexical bindings, including closures, shadowing,
+comprehensions, and `global`/`nonlocal` declarations. An ordinary reassignment
+keeps the binding's style; an unannotated binding in an inner function masks
+an outer style. The last string annotation for a name in a scope determines
+its style throughout that scope. Analysis updates as the document and its
+incremental parse tree change.
+
+This feature only styles variable names. Attribute names (`obj.x`), keyword
+argument labels, comments, literal text, and function return annotations are
+not styled. It does not perform type inference, resolve attributes, execute
+Python, or model runtime control flow, wildcard imports, or dynamic bindings
+created by `exec`.
+
+The extension attaches classes but does not bundle a CSS compiler. Supply
+Tailwind CSS v4 styles in the host page. For an editor that accepts new classes
+at runtime, the [Tailwind browser compiler](https://tailwindcss.com/docs/installation/play-cdn)
+can generate them as decorations appear. A production integration can instead
+provide precompiled CSS for its allowed classes.
+
+Use important utilities so annotation styles override CodeMirror's syntax
+highlighting. To keep Tailwind's Preflight reset out of the editor, import
+only the theme and utilities, following
+[Tailwind's individual-import guidance](https://tailwindcss.com/docs/preflight#disabling-preflight):
+
+```css
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) important;
+```
+
+You can also add `pythonTailwind()` alongside an existing `python()`
+configuration. `python()` without options preserves the original behavior.
+The sibling `demo` checkout includes a self-contained example.
+
 # API Reference
 
 <dl>
 <dt id="user-content-python">
-  <code><strong><a href="#user-content-python">python</a></strong>() → <a href="https://codemirror.net/docs/ref#language.LanguageSupport">LanguageSupport</a></code></dt>
+  <code><strong><a href="#user-content-python">python</a></strong>(config?: {tailwind?: boolean}) → <a href="https://codemirror.net/docs/ref#language.LanguageSupport">LanguageSupport</a></code></dt>
 
-<dd><p>Python language support.</p>
+<dd><p>Python language support. Set <code>tailwind</code> to interpret string variable annotations as CSS classes (see <a href="#user-content-pythontailwind">pythonTailwind</a>).</p>
 </dd>
 <dt id="user-content-pythonlanguage">
   <code><strong><a href="#user-content-pythonlanguage">pythonLanguage</a></strong>: <a href="https://codemirror.net/docs/ref#language.LRLanguage">LRLanguage</a></code></dt>
@@ -46,6 +100,12 @@ const view = new EditorView({
 <dd><p>A language provider based on the <a href="https://code.haverbeke.berlin/lezer/python">Lezer Python
 parser</a>, extended with
 highlighting and indentation information.</p>
+</dd>
+<dt id="user-content-pythontailwind">
+  <code><strong><a href="#user-content-pythontailwind">pythonTailwind</a></strong>() → <a href="https://codemirror.net/docs/ref/#state.Extension">Extension</a></code></dt>
+
+<dd><p>Apply the classes in string annotations to variable declarations and references in their Python lexical scope. Includes parameters, local and module variables, closures, and shadowing. Function return annotations and attribute names are not styled.</p>
+<p>This extension attaches class names; the host must provide Tailwind CSS v4 (or other matching CSS). Use important utilities to override syntax highlighting. No Python code is evaluated.</p>
 </dd>
 <dt id="user-content-globalcompletion">
   <code><strong><a href="#user-content-globalcompletion">globalCompletion</a></strong>: <a href="https://codemirror.net/docs/ref#autocomplete.CompletionSource">CompletionSource</a></code></dt>

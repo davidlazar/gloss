@@ -3,7 +3,9 @@ import {SyntaxNode} from "@lezer/common"
 import {delimitedIndent, indentNodeProp, TreeIndentContext, 
         foldNodeProp, foldInside, LRLanguage, LanguageSupport} from "@codemirror/language"
 import {globalCompletion, localCompletionSource} from "./complete"
+import {pythonTailwind} from "./tailwind"
 export {globalCompletion, localCompletionSource}
+export {pythonTailwind}
 
 function innerBody(context: TreeIndentContext) {
   let {node, pos} = context
@@ -103,10 +105,12 @@ export const pythonLanguage = LRLanguage.define({
   }
 })
 
-/// Python language support.
-export function python() {
+/// Python language support. Set `tailwind` to interpret string variable
+/// annotations as CSS classes (see [pythonTailwind](#pythonTailwind)).
+export function python(config: {tailwind?: boolean} = {}) {
   return new LanguageSupport(pythonLanguage, [
     pythonLanguage.data.of({autocomplete: localCompletionSource}),
     pythonLanguage.data.of({autocomplete: globalCompletion}),
+    config.tailwind ? pythonTailwind() : [],
   ])
 }

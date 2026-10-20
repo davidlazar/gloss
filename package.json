@@ -3,7 +3,8 @@
   "version": "6.2.1",
   "description": "Python language support for the CodeMirror code editor",
   "scripts": {
-    "test": "cm-runtests",
+    "test": "cm-buildhelper src/python.ts && mocha --import=tsx 'test/**/test-*.ts'",
+    "check": "tsc --noEmit",
     "prepare": "cm-buildhelper src/python.ts"
   },
   "keywords": [
@@ -27,13 +28,19 @@
   "license": "MIT",
   "dependencies": {
     "@codemirror/state": "^6.0.0",
+    "@codemirror/view": "^6.0.0",
     "@codemirror/autocomplete": "^6.3.2",
     "@codemirror/language": "^6.8.0",
     "@lezer/common": "^1.2.1",
     "@lezer/python": "^1.1.4"
   },
   "devDependencies": {
-    "@codemirror/buildhelper": "^1.0.0"
+    "@codemirror/buildhelper": "^1.0.0",
+    "@types/mocha": "^10.0.0",
+    "ist": "^1.1.7",
+    "mocha": "^10.8.2",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
   },
   "repository": {
     "type": "git",
