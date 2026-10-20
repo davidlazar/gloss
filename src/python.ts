@@ -106,7 +106,7 @@ export const pythonLanguage = LRLanguage.define({
 })
 
 /// Python language support. Set `tailwind` to interpret string variable
-/// annotations as CSS classes (see [pythonTailwind](#pythonTailwind)).
+/// and return annotations as CSS classes (see [pythonTailwind](#pythonTailwind)).
 export function python(config: {tailwind?: boolean} = {}) {
   return new LanguageSupport(pythonLanguage, [
     pythonLanguage.data.of({autocomplete: localCompletionSource}),
