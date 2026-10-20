@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python × Tailwind</title>
+  <meta name="description" content="Add Tailwind CSS classes to your code">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./demo.css">
+  <!-- The local v4 browser compiler discovers classes added by decorations.
+       Important utilities override token styles; omitting Preflight leaves
+       CodeMirror's editor layout intact. -->
+  <style type="text/tailwindcss">
+    @layer theme, base, components, utilities;
+    @import "tailwindcss/theme.css" layer(theme);
+    @import "tailwindcss/utilities.css" layer(utilities) important;
+  </style>
+  <script src="./tailwind.js" defer></script>
+  <script src="./editor.js" type="module"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1><s class="pr-4 text-black decoration-red-600">Types</s> <span class="text-emerald-600">CSS!</span></h1>
+      <p class="intro">All examples are valid Python code. Edit the code and watch the styles update in realtime.</p>
+    </header>
+    <section class="editor-panel" aria-label="Interactive Python editor">
+      <div class="toolbar">
+        <label for="example">Example
+          <select id="example">
+            <option value="basic">Basic</option>
+            <option value="functions">Functions</option>
+            <option value="scopes">Closures &amp; shadowing</option>
+            <option value="returns">Return annotations</option>
+            <option value="utilities">More utilities</option>
+          </select>
+        </label>
+        <div class="actions">
+          <label class="toggle"><input id="enabled" type="checkbox" checked> Style annotations</label>
+          <button id="reset" type="button">Reset example</button>
+        </div>
+      </div>
+      <div id="editor"></div>
+      <div class="editor-footer">
+        <div class="footer-controls">
+          <span><span class="status-dot" aria-hidden="true"></span><span id="status" role="status">Annotations on</span></span>
+          <label class="theme-picker" for="syntax-theme">Theme
+            <select id="syntax-theme" aria-label="Syntax highlighting theme">
+              <option value="github-light" selected>GitHub Light</option>
+              <option value="light">CodeMirror Light</option>
+              <option value="vscode-light">VS Code Light</option>
+              <option value="solarized-light">Solarized Light</option>
+              <option value="monokai">Monokai</option>
+              <option value="dark">One Dark</option>
+              <option value="plain">No highlighting</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </section>
+    <footer></footer>
+  </main>
+</body>
+</html>
