@@ -76,6 +76,30 @@ def shadow():
 print(«x»)
 `))
 
+  it("applies annotations in source order while preserving lexical shadowing", () => check(`
+x = 0
+«x»: 'text-blue-500'
+print(«x»)
+def before():
+    return «x»
+«x|italic»: 'italic'
+def after():
+    return «x|italic»
+def shadow():
+    print(x)
+    «x|underline»: 'underline'
+    return «x|underline»
+print(«x|italic»)
+x: int
+print(x)
+`))
+
+  it("updates parameter styles only after a local annotation", () => check(`
+def foo(«x»: 'text-blue-500'):
+    print(«x»); «x|italic»: 'italic'; print(«x|italic»)
+    return «x|italic»
+`))
+
   it("treats blocks as part of the enclosing function scope", () => check(`
 def foo():
     if True:
@@ -151,7 +175,7 @@ class A:
         print(«x»)
 `))
 
-  it("leaves properties, keyword labels, literal text, and function names unstyled", () => check(`
+  it("leaves properties, keyword labels, literal text, and unannotated function names unstyled", () => check(`
 def foo(«x»: 'text-blue-500') -> 'text-red-500':
     # x should stay a comment
     obj.x = «x»
@@ -211,6 +235,115 @@ print(«x|text-[#123456] hover:underline font-bold!»)
   })
 })
 
+describe("Python Tailwind function name annotations", () => {
+  it("styles definitions, calls, and references from an earlier annotation", () => check(`
+«foo»: 'text-blue-500'
+def «foo»():
+    return 42
+callback = «foo»
+print(«foo»())
+callback()
+obj.foo()
+`))
+
+  it("applies later annotations only to subsequent occurrences", () => check(`
+«foo»: 'text-blue-500'
+def «foo»():
+    return 42
+print(«foo»())
+«foo|text-red-500»: 'text-red-500'
+print(«foo|text-red-500»())
+`))
+
+  it("resolves recursion, closures, and shadowing function names", () => check(`
+«foo»: 'text-blue-500'
+def «foo»(n):
+    return «foo»(n - 1) if n else 0
+def closure():
+    return «foo»()
+def parameter(foo):
+    return foo()
+def outer():
+    def foo():
+        return 1
+    «foo|italic»: 'italic'
+    return «foo|italic»()
+def shadow():
+    def foo():
+        return 2
+    return foo()
+`))
+
+  it("styles decorated and async definitions without inheriting return styles", () => check(`
+«foo»: 'text-blue-500'
+@decorate
+async def «foo»():
+    return 42
+def bar() -> 'text-red-500':
+    return 1
+print(«foo», bar)
+`))
+
+  it("keeps function name annotations independent of return inference", () => check(`
+«foo»: 'text-blue-500'
+def «foo»() -> 'bg-red-300':
+    return 42
+«foo»: 'text-blue-500'
+«x|bg-red-300» = «foo»()
+«y|italic»: 'italic' = «foo»()
+print(«x|bg-red-300», «y|italic»)
+def bar() -> 'text-blue-500':
+    return 1
+«bar|underline»: 'underline'
+«z» = «bar|underline»()
+print(«z»)
+`))
+
+  it("clears name styles with an empty or ordinary annotation while preserving return inference", () => {
+    for (const annotation of ["''", "int"]) check(`
+«foo»: 'text-blue-500'
+def «foo»() -> 'bg-red-300':
+    return 42
+foo: ${annotation}
+«x|bg-red-300» = foo()
+print(«x|bg-red-300»)
+`)
+  })
+
+  it("still suppresses return inference when an annotated function is reassigned", () => check(`
+«foo»: 'text-blue-500'
+def «foo»() -> 'bg-red-300':
+    return 42
+«foo»: 'text-blue-500' = replacement
+x = «foo»()
+print(x)
+`))
+
+  it("updates definitions and calls when name annotations are edited or removed", () => {
+    let state = stateFor("foo: 'text-blue-500'\ndef foo() -> 'bg-red-300': return 42\nfoo: 'italic'\nx = foo()\nprint(x)\n")
+    const expect = (...nameStyles: string[]) => {
+      const doc = state.doc.toString()
+      const actual = styles(state)
+      ist(JSON.stringify(actual.filter(s => doc.slice(s[0], s[1]) == "foo").map(s => s[2])),
+          JSON.stringify(nameStyles))
+      ist(JSON.stringify(actual.filter(s => doc.slice(s[0], s[1]) == "x").map(s => s[2])),
+          JSON.stringify(["bg-red-300", "bg-red-300"]))
+    }
+    function edit(from: string, to: string) {
+      let pos = state.doc.toString().indexOf(from)
+      ist(pos >= 0, true)
+      state = state.update({changes: {from: pos, to: pos + from.length, insert: to}}).state
+    }
+    expect("text-blue-500", "text-blue-500", "italic", "italic")
+    edit("'italic'", "'text-red-500'")
+    expect("text-blue-500", "text-blue-500", "text-red-500", "text-red-500")
+    edit("foo: 'text-red-500'\n", "")
+    expect("text-blue-500", "text-blue-500", "text-blue-500")
+    edit("foo: 'text-blue-500'\n", "")
+    expect()
+  })
+})
+
 describe("Python Tailwind return annotation inference", () => {
   it("styles assignments and references using a function's return annotation", () => check(`
 def foo() -> 'bg-red-300':
@@ -243,14 +376,15 @@ def outer():
 print(«x»)
 `))
 
-  it("gives explicit annotations precedence regardless of declaration order", () => check(`
+  it("gives explicit annotations precedence from their declaration onward", () => check(`
 def foo() -> 'text-blue-500':
     return 1
 «a|bg-blue-300»: 'bg-blue-300' = foo()
 «b|italic»: 'italic'
 «b|italic» = foo()
-«c|underline» = foo()
+«c» = foo()
 «c|underline»: 'underline'
+«c|underline» = foo()
 def consume(«x|font-bold»: 'font-bold'):
     «x|font-bold» = foo()
     return «x|font-bold»
@@ -262,8 +396,9 @@ def foo() -> 'text-blue-500':
     return 1
 a: '' = foo()
 b: int = foo()
-c = foo()
+«c» = foo()
 c: ''
+c = foo()
 print(a, b, c)
 `))
 
@@ -340,13 +475,13 @@ print(x)
 
   it("respects global and nonlocal function lookup and assignment targets", () => check(`
 def foo() -> 'text-blue-500': return 1
-«x» = 0
+x = 0
 def outer():
-    «y|italic» = 0
+    y = 0
     def local() -> 'italic': return 2
     def inner():
-        global foo, «x»
-        nonlocal local, «y|italic»
+        global foo, x
+        nonlocal local, y
         «x» = foo()
         «y|italic» = local()
         return «x», «y|italic»
@@ -373,7 +508,7 @@ print(x)
   it("creates a global result binding when it is first assigned inside a function", () => check(`
 def foo() -> 'text-blue-500': return 1
 def consume():
-    global «x»
+    global x
     «x» = foo()
 print(«x»)
 `))
@@ -418,10 +553,10 @@ copy = a
 print(a, b, c, d, e, f, g, h, i, j, copy)
 `))
 
-  it("uses the last resolved annotated call as a binding's fallback style", () => check(`
+  it("updates a binding's fallback style as annotated calls are encountered", () => check(`
 def foo() -> 'text-blue-500': return 1
 def bar() -> 'italic': return 2
-«x|italic» = foo()
+«x» = foo()
 «x|italic» = bar()
 «x|italic» = 3
 print(«x|italic»)

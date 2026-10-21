@@ -114,26 +114,24 @@ function annotationClasses(state: EditorState, node: SyntaxNode | undefined): st
 export function tailwindDecorations(state: EditorState): DecorationSet {
   let root = new Scope("module", null)
   let scopes = [root]
-  let references: {node: SyntaxNode, scope: Scope}[] = []
-  let assignments: {name: string, callee: string, scope: Scope}[] = []
+  let references: {node: SyntaxNode, scope: Scope, annotation?: SyntaxNode | null}[] = []
+  let assignedCalls = new Map<number, string>()
   let text = (node: SyntaxNode) => state.sliceDoc(node.from, node.to)
 
-  function bind(node: SyntaxNode, scope: Scope, annotation?: SyntaxNode | null, reference = true) {
+  function bind(node: SyntaxNode, scope: Scope,
+                {annotation, reference = true, assigned = true}:
+                {annotation?: SyntaxNode | null, reference?: boolean, assigned?: boolean} = {}) {
     let binding = scope.binding(text(node))
-    binding.definitions++
-    if (annotation?.name == "TypeDef") {
-      binding.annotated = true
-      binding.classes = annotationClasses(state, annotation)
-    }
-    if (reference) references.push({node, scope})
+    if (assigned) binding.definitions++
+    if (reference) references.push({node, scope, annotation})
     return binding
   }
 
-  function target(node: SyntaxNode, scope: Scope, annotation?: SyntaxNode) {
+  function target(node: SyntaxNode, scope: Scope, annotation?: SyntaxNode, assigned = true) {
     if (node.name == "VariableName") {
-      bind(node, scope, annotation)
+      bind(node, scope, {annotation, assigned})
     } else if (/^(TupleExpression|ArrayExpression|ParenthesizedExpression)$/.test(node.name)) {
-      for (let child of children(node)) target(child, scope, annotation)
+      for (let child of children(node)) target(child, scope, annotation, assigned)
     } else {
       // In obj.x / obj[index], obj and index are references, not bindings.
       visit(node, scope)
@@ -145,7 +143,7 @@ export function tailwindDecorations(state: EditorState): DecorationSet {
     for (let child of children(node)) {
       if (child.name == ",") expectName = true
       else if (expectName && child.name == "VariableName") {
-        bind(child, inner, child.nextSibling)
+        bind(child, inner, {annotation: child.nextSibling})
         expectName = false
       } else if (child.name != "TypeDef") {
         // Defaults are evaluated in the enclosing scope.
@@ -191,7 +189,7 @@ export function tailwindDecorations(state: EditorState): DecorationSet {
         scopes.push(inner)
         let name = node.name == "LambdaExpression" ? null : node.getChild("VariableName")
         if (name) {
-          let binding = bind(name, scope, null, false)
+          let binding = bind(name, scope, {reference: node.name == "FunctionDefinition"})
           if (node.name == "FunctionDefinition")
             binding.returnClasses = annotationClasses(state, node.getChild("TypeDef") || undefined)
         }
@@ -218,7 +216,9 @@ export function tailwindDecorations(state: EditorState): DecorationSet {
           let child = parts[i]
           if (child.name == "TypeDef") continue
           if (i < lastAssign || (i == 0 && parts[i + 1]?.name == "TypeDef"))
-            target(child, scope, parts[i + 1])
+            // A bare annotation declares a binding without replacing its
+            // value, so it must not suppress inference from an annotated function.
+            target(child, scope, parts[i + 1], lastAssign >= 0)
           else visit(child, scope)
         }
         // Only a whole call result assigned to a simple name is inferred.
@@ -231,7 +231,7 @@ export function tailwindDecorations(state: EditorState): DecorationSet {
           for (let from = 0, i = 0; i <= lastAssign; i++) if (parts[i].name == "AssignOp") {
             let lhs = parts.slice(from, i).filter(n => n.name != "TypeDef" && n.name != "Comment")
             let name = lhs.length == 1 ? unparenthesize(lhs[0]) : null
-            if (name?.name == "VariableName") assignments.push({name: text(name), callee: text(callee), scope})
+            if (name?.name == "VariableName") assignedCalls.set(name.from, text(callee))
             from = i + 1
           }
         }
@@ -320,14 +320,21 @@ export function tailwindDecorations(state: EditorState): DecorationSet {
       if (binding.returnClasses != null) destination.returnClasses = binding.returnClasses
     }
   }
-  for (let {name, callee, scope} of assignments) {
-    let binding = scope.resolve(name), fn = scope.resolve(callee)
-    if (binding && !binding.annotated && fn?.definitions == 1 && fn.returnClasses != null)
-      binding.classes = fn.returnClasses
-  }
   let marks: Range<Decoration>[] = [], styles = new Map<string, Decoration>()
-  for (let {node, scope} of references) {
-    let classes = scope.resolve(text(node))?.classes
+  // With lexical bindings known, read styles in source order. Each
+  // annotation or inferred assignment updates the binding for later uses.
+  references.sort((a, b) => a.node.from - b.node.from)
+  for (let {node, scope, annotation} of references) {
+    let binding = scope.resolve(text(node))
+    if (!binding) continue
+    if (annotation?.name == "TypeDef") {
+      binding.annotated = true
+      binding.classes = annotationClasses(state, annotation)
+    } else if (!binding.annotated) {
+      let callee = assignedCalls.get(node.from), fn = callee ? scope.resolve(callee) : null
+      if (fn?.definitions == 1 && fn.returnClasses != null) binding.classes = fn.returnClasses
+    }
+    let classes = binding.classes
     if (!classes) continue
     let mark = styles.get(classes)
     if (!mark) styles.set(classes, mark = Decoration.mark({class: classes, attributes: {"data-python-tailwind": ""}}))
@@ -351,10 +358,13 @@ const tailwindPlugin = ViewPlugin.fromClass(class {
 
 /// Apply the classes in string annotations to variable declarations and
 /// references in their Python lexical scope. Includes parameters, local
-/// and module variables, closures, and shadowing. Direct calls to functions
-/// defined in the document infer a style for assigned variables from the
-/// function's return annotation. Explicit variable annotations take
-/// precedence. Function and attribute names are not styled by inference.
+/// and module variables, function names, closures, and shadowing. A name
+/// annotation styles that occurrence and subsequent references to the
+/// binding in source order, including function definitions after it.
+/// Direct calls to functions defined in the document infer a style for
+/// assigned variables from the function's return annotation, independently
+/// of its name's style. Explicit annotations take precedence from their
+/// declaration onward. Attribute names are not styled.
 ///
 /// This extension attaches class names; the host must provide Tailwind
 /// CSS v4 (or other matching CSS). Use important utilities to override

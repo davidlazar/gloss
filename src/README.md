@@ -55,9 +55,37 @@ string literals are supported. F-strings and computed annotations are ignored.
 Styles follow static Python lexical bindings, including closures, shadowing,
 comprehensions, and `global`/`nonlocal` declarations. An ordinary reassignment
 keeps the binding's style; an unannotated binding in an inner function masks
-an outer style. The last explicit annotation for a name in a scope determines
-its style throughout that scope. Analysis updates as the document and its
+an outer style. Styles are read in source order: an annotation changes the
+binding's style at that occurrence and for subsequent references. Earlier
+occurrences keep their styles. Analysis updates as the document and its
 incremental parse tree change.
+
+### Function names
+
+Annotate a function's binding to style its name in the definition, calls,
+and other references:
+
+```python
+foo: 'text-blue-500'
+def foo() -> 'bg-red-300':
+    return 42
+
+x = foo()  # foo is blue; x has a red background.
+
+foo: 'text-red-500'
+print(foo())  # This foo is red; the earlier occurrences stay blue.
+```
+
+The name annotation can appear before or after the function definition in
+the same scope. It affects the definition only if it appears before it. An
+empty or non-string annotation clears the name's style from that point onward.
+Nested and async functions use the same rules, and shadowing bindings keep
+their own styles.
+
+A name annotation without an assignment does not replace the function or
+disable inference from its return annotation. The name and result styles
+are independent. Function aliases and attribute names such as `obj.foo`
+do not automatically inherit the function's style.
 
 ### Return annotations
 
@@ -77,15 +105,15 @@ print(y)  # An explicit annotation overrides the inferred style.
 
 Inference resolves functions defined in the document using the same lexical
 scope rules, including nested functions and shadowing. Function definitions
-can appear after the calling code. Explicit variable annotations always take
-precedence, even if written later; an empty annotation or an ordinary type
-annotation such as `int` suppresses inference for that binding.
+can appear after the calling code. Explicit variable annotations take
+precedence from their declaration onward; an empty annotation or an ordinary
+type annotation such as `int` suppresses subsequent inference for that binding.
 
-Like explicit styles, inferred styles apply throughout a binding's scope.
-The last resolved call with a string return annotation supplies the fallback;
-ordinary reassignments keep that style. This is static style inference, not
-execution-order analysis. Inference skips function names that are reassigned
-or defined more than once.
+An inferred style starts at the assignment and applies to subsequent references.
+A later resolved call can change the fallback style; ordinary reassignments
+keep it. Style changes follow source order, including inside function bodies,
+without predicting when those functions run. Inference skips function names
+that are reassigned or defined more than once.
 
 Currently, inference handles `name = function(...)` and chained assignments
 such as `a = b = function()`, including redundant parentheses. It does not
@@ -93,7 +121,7 @@ follow imported functions, aliases, method calls, variable-to-variable copies,
 tuple unpacking, `await`, assignment expressions (`:=`), or compound right-hand
 sides.
 
-This feature only styles variable names. Attribute names (`obj.x`), keyword
+This feature styles variable and function names. Attribute names (`obj.x`), keyword
 argument labels, comments, and literal text are not styled. Return annotations
 style assigned results, not the function's name or call expression. The
 extension does not perform general type inference, resolve attributes, execute
