@@ -147,7 +147,7 @@ only the theme and utilities, following
 
 You can also add `pythonTailwind()` alongside an existing `python()`
 configuration. `python()` without options preserves the original behavior.
-The sibling `demo` checkout includes a self-contained example.
+The `demo/` directory includes a self-contained example.
 
 # API Reference
 
